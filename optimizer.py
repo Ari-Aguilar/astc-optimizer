@@ -129,6 +129,9 @@ ASCII_ERROR = r"""
 ENCODER_NAMES = ["astcenc", "astcenc-sse4.1", "astcenc-sse2", "astcenc-avx2", "astcenc-neon"]
 DOWNLOAD_URL  = "https://github.com/ARM-software/astc-encoder/releases"
 
+# Nombres de carpetas que pueden excluirse del escaneo (case-insensitive)
+IGNORABLE_FOLDER_NAMES = {"icon", "icons"}
+
 def _find_local_encoder(script_dir):
     """Busca el ejecutable junto al script o en el PATH."""
     # 1) Junto al script (con cualquier nombre conocido)
@@ -159,6 +162,18 @@ def check_encoder():
     """
     script_dir = Path(__file__).resolve().parent
     return _find_local_encoder(script_dir)
+
+
+def _is_inside_ignored_folder(png_path, root_path):
+    """Devuelve True si alguna carpeta del path relativo se llama icon/icons."""
+    try:
+        rel_parts = png_path.relative_to(root_path).parts[:-1]  # sin el nombre del archivo
+    except ValueError:
+        rel_parts = png_path.parts[:-1]
+    for part in rel_parts:
+        if part.lower() in IGNORABLE_FOLDER_NAMES:
+            return True
+    return False
 
 
 def screen_no_encoder(missing_name="astcenc"):
@@ -357,6 +372,23 @@ def screen_folder(current_path=None):
     return Path(path_input).expanduser().resolve()
 
 
+def screen_ignore_icons():
+    """Pregunta si se deben ignorar las carpetas icon/icons."""
+    print(f"  {C.CYAN}┌─ Ignorar carpetas de íconos ─────────────────────────────┐{C.RESET}")
+    print(f"  {C.CYAN}│{C.RESET}  {C.DARK}¿Quieres excluir carpetas llamadas {C.WHITE}icon{C.DARK}/{C.WHITE}icons{C.DARK}?{C.RESET}")
+    print(f"  {C.CYAN}└──────────────────────────────────────────────────────────┘{C.RESET}")
+    print()
+
+    opts = [
+        "🚫  Sí, ignorar carpetas icon/icons",
+        "✅  No, incluir todos los PNG",
+    ]
+    _print_options_initial(opts, C.CYAN)
+    choice = arrow_select(opts, color_active=C.CYAN)
+    print()
+    return choice == 0
+
+
 def screen_optimize(root_path):
     """Pantalla de optimización: escaneo + selección de opciones."""
     clear()
@@ -383,6 +415,23 @@ def screen_optimize(root_path):
 
     print(f"  {C.DARK}[{C.RESET} {C.YELLOW}!{C.RESET} {C.DARK}]{C.RESET}  {C.WHITE}Encontrados {C.YELLOW}{len(png_files)}{C.WHITE} archivos PNG{C.RESET}")
     print()
+
+    # ── Ignorar carpetas icon/icons ─────────────────────────
+    ignore_icons = screen_ignore_icons()
+
+    if ignore_icons:
+        before = len(png_files)
+        png_files = [p for p in png_files if not _is_inside_ignored_folder(p, root_path)]
+        excluded = before - len(png_files)
+
+        print_status("🚫", f"Excluidos por carpeta icon/icons: {C.YELLOW}{excluded}{C.RESET}", C.DARK)
+        print(f"  {C.DARK}[{C.RESET} {C.WHITE}✓{C.RESET} {C.DARK}]{C.RESET}  {C.WHITE}Quedan {C.YELLOW}{len(png_files)}{C.WHITE} archivos PNG para convertir{C.RESET}")
+        print()
+
+        if not png_files:
+            print_warn("No quedan archivos PNG tras excluir icon/icons.")
+            time.sleep(2)
+            return None, None, None
 
     # ── Seleccionar resolución ──────────────────────────────
     print(f"  {C.CYAN}┌─ Seleccionar Resolución (bloque) ───────────────────────┐{C.RESET}")
